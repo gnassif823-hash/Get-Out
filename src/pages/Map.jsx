@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../supabaseClient';
+import { db } from '../lib/firebase';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { Search } from 'lucide-react';
 import L from 'leaflet';
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -29,26 +30,22 @@ const MapPage = () => {
     const [friends, setFriends] = useState([]);
     const [myLocation, setMyLocation] = useState(null); // [lat, lng]
 
-    // 1. Fetch Friends from Supabase
-    const fetchFriends = async () => {
-        const { data } = await supabase
-            .from('profiles')
-            .select('*')
-            .neq('status', 'offline'); // Only show online friends
-
-        if (data) setFriends(data);
-    };
-
+    // 1. Fetch Friends from Firestore
     useEffect(() => {
-        fetchFriends();
+        // Query users who are NOT offline. Note: Firestore requires index for filtering sometimes.
+        // For simplicity with small data, we can fetch all and filter client side or use simple queries for now.
+        // Or if we want strictly query: where('status', '!=', 'offline')
 
-        // Subscribe to profile changes (position updates)
-        const channel = supabase
-            .channel('public:profiles:map')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, fetchFriends)
-            .subscribe();
+        const q = query(collection(db, 'profiles'));
 
-        return () => { supabase.removeChannel(channel); };
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const profiles = snapshot.docs
+                .map(doc => ({ id: doc.id, ...doc.data() }))
+                .filter(p => p.status !== 'offline' && p.location && p.location.includes(','));
+            setFriends(profiles);
+        });
+
+        return () => unsubscribe();
     }, []);
 
     // 2. Track Self Location
@@ -61,8 +58,6 @@ const MapPage = () => {
                 setMyLocation([latitude, longitude]);
 
                 // Update DB with new coordinates if status is 'available'
-                // Storing lat,lng string in 'location' column for simplicity, 
-                // ideally use PostGIS but string is fine for prototype.
                 const locationStr = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
                 if (user.status === 'available') {
                     updateStatus(user.status, locationStr, user.time_note);
@@ -96,7 +91,7 @@ const MapPage = () => {
                     {friends.length === 0 ? <p>No one available.</p> : (
                         friends.map(friend => (
                             <div key={friend.id} className="place-item">
-                                <span className="place-name">{friend.name}</span>
+                                <span className="place-name">{friend.username || friend.name}</span>
                                 <span className="place-type">{friend.status}</span>
                             </div>
                         ))
@@ -122,7 +117,7 @@ const MapPage = () => {
                             <Marker key={friend.id} position={pos}>
                                 <Popup>
                                     <div className="map-popup">
-                                        <b>{friend.name}</b>
+                                        <b>{friend.username || friend.name}</b>
                                         <br />
                                         {friend.time_note || 'Chilling'}
                                     </div>

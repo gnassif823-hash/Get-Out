@@ -5,9 +5,8 @@ import './CallCenter.css';
 const CallCenter = () => {
     const { user } = useAuth();
 
-    // In a real app, we'd fetch active calls from Supabase 'calls' table
+    // In a real app, we'd fetch active calls from Firebase 'calls' collection
     // For now, we simply show the user their own view and a Join button
-    // No fake GEORGE or SARAH.
 
     return (
         <div className="page-container call-page">
@@ -15,8 +14,8 @@ const CallCenter = () => {
                 <div className="video-grid">
                     {/* Self View */}
                     <div className="video-card self">
-                        <div className="avatar-placeholder">{user?.name?.[0]}</div>
-                        <span className="participant-name">{user?.name} (You)</span>
+                        <div className="avatar-placeholder">{user?.username?.[0] || 'U'}</div>
+                        <span className="participant-name">{user?.username || 'You'} (You)</span>
                     </div>
 
                     {/* Empty State / Waiting */}

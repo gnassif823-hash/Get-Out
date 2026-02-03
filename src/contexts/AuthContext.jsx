@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
+import { auth, db } from '../lib/firebase';
+import { signInAnonymously, onAuthStateChanged, signOut } from 'firebase/auth';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 
 const AuthContext = createContext();
 
@@ -10,47 +12,52 @@ export const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Check local storage on mount
-        const storedUser = localStorage.getItem('get_out_user');
-        if (storedUser) {
-            setUser(JSON.parse(storedUser));
-        }
-        setLoading(false);
+        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+            if (firebaseUser) {
+                // User is signed in, fetch profile
+                try {
+                    const userDocRef = doc(db, 'profiles', firebaseUser.uid);
+                    const userDoc = await getDoc(userDocRef);
+
+                    if (userDoc.exists()) {
+                        setUser({ id: firebaseUser.uid, ...userDoc.data() });
+                    } else {
+                        // Profile might not exist if created just now? 
+                        // Or if anonymous auth persists but profile was deleted?
+                        // For now, just set basic info
+                        setUser({ id: firebaseUser.uid });
+                    }
+                } catch (error) {
+                    console.error("Error fetching user profile:", error);
+                }
+            } else {
+                setUser(null);
+            }
+            setLoading(false);
+        });
+
+        return () => unsubscribe();
     }, []);
 
-    const login = async (name) => {
+    const login = async () => {
         try {
-            // 1. Check if user exists
-            let { data: existingUser, error: fetchError } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('name', name)
-                .single();
+            const result = await signInAnonymously(auth);
+            const user = result.user;
 
-            if (fetchError && fetchError.code !== 'PGRST116') {
-                throw fetchError;
-            }
+            // Link anonymous UID to 'George'
+            const userDocRef = doc(db, 'profiles', user.uid);
+            const userData = {
+                username: 'George',
+                status: 'Available',
+                location: 'Unknown',
+                last_updated: serverTimestamp(),
+                is_online: true
+            };
 
-            let profile;
+            await setDoc(userDocRef, userData, { merge: true });
 
-            if (existingUser) {
-                // User exists, log them in
-                profile = existingUser;
-            } else {
-                // User doesn't exist, create new profile
-                const { data: newUser, error: createError } = await supabase
-                    .from('profiles')
-                    .insert([{ name, status: 'available', location: 'Unknown' }])
-                    .select()
-                    .single();
-
-                if (createError) throw createError;
-                profile = newUser;
-            }
-
-            // 2. Save to state and local storage
-            setUser(profile);
-            localStorage.setItem('get_out_user', JSON.stringify(profile));
+            // State update will trigger via onAuthStateChanged, but we can optimistically set it to be faster?
+            // onAuthStateChanged is fast, let's rely on it or return success.
             return { success: true };
 
         } catch (error) {
@@ -59,33 +66,35 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
-    const logout = () => {
-        setUser(null);
-        localStorage.removeItem('get_out_user');
+    const logout = async () => {
+        try {
+            if (user) {
+                // Optional: set offline
+                const userDocRef = doc(db, 'profiles', user.id);
+                await updateDoc(userDocRef, { is_online: false });
+            }
+            await signOut(auth);
+        } catch (error) {
+            console.error('Logout error:', error);
+        }
     };
 
     const updateStatus = async (status, location, time) => {
         if (!user) return;
 
         try {
+            const userDocRef = doc(db, 'profiles', user.id);
             const updates = {
                 status,
                 location,
-                time_note: time,
-                last_updated: new Date().toISOString(),
+                time_note: time || '',
+                last_updated: serverTimestamp(),
             };
 
-            const { error } = await supabase
-                .from('profiles')
-                .update(updates)
-                .eq('id', user.id);
+            await updateDoc(userDocRef, updates);
 
-            if (error) throw error;
-
-            // Update local state optimistically
-            const updatedUser = { ...user, ...updates };
-            setUser(updatedUser);
-            localStorage.setItem('get_out_user', JSON.stringify(updatedUser)); // Keep local storage in sync? Maybe not strictly necessary for status but good for coherence
+            // Optimistic update
+            setUser(prev => ({ ...prev, ...updates }));
 
         } catch (error) {
             console.error('Error updating status:', error);

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../supabaseClient';
+import { db } from '../lib/firebase';
+import { collection, addDoc, onSnapshot, query, orderBy, limit, serverTimestamp } from 'firebase/firestore';
 import { Send, Smile, Paperclip } from 'lucide-react';
 import './Lounge.css';
 
@@ -10,29 +11,24 @@ const Lounge = () => {
     const [inputText, setInputText] = useState('');
     const messagesEndRef = useRef(null);
 
-    const fetchMessages = async () => {
-        const { data, error } = await supabase
-            .from('messages')
-            .select('*, profiles(name)')
-            .order('created_at', { ascending: true })
-            .limit(50);
-
-        if (data) setMessages(data);
-    };
-
     useEffect(() => {
-        fetchMessages();
+        const q = query(
+            collection(db, 'messages'),
+            orderBy('created_at', 'asc'),
+            limit(50)
+        );
 
-        const channel = supabase
-            .channel('public:messages')
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
-                fetchMessages();
-            })
-            .subscribe();
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const msgs = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data(),
+                // Handle serverTimestamp which might be null initially
+                created_at: doc.data().created_at?.toDate() || new Date()
+            }));
+            setMessages(msgs);
+        });
 
-        return () => {
-            supabase.removeChannel(channel);
-        };
+        return () => unsubscribe();
     }, []);
 
     useEffect(() => {
@@ -45,13 +41,16 @@ const Lounge = () => {
         const text = inputText;
         setInputText('');
 
-        const { error } = await supabase
-            .from('messages')
-            .insert([
-                { user_id: user.id, content: text }
-            ]);
-
-        if (error) console.error('Error sending message:', error);
+        try {
+            await addDoc(collection(db, 'messages'), {
+                user_id: user.id || user.uid,
+                sender_name: user.username || 'Anonymous', // Fallback
+                content: text,
+                created_at: serverTimestamp()
+            });
+        } catch (error) {
+            console.error('Error sending message:', error);
+        }
     };
 
     return (
@@ -63,22 +62,28 @@ const Lounge = () => {
                 </header>
 
                 <div className="messages-area">
-                    {messages.map(msg => {
-                        const isMe = msg.user_id === user?.id;
-                        const senderName = msg.profiles?.name || 'Unknown';
-                        const time = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    {messages.length === 0 ? (
+                        <div className="welcome-msg">
+                            <p>Welcome to The Lounge! Start the conversation.</p>
+                        </div>
+                    ) : (
+                        messages.map(msg => {
+                            const isMe = msg.user_id === (user?.id || user?.uid);
+                            const senderName = msg.sender_name || 'Unknown';
+                            const time = msg.created_at ? msg.created_at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
 
-                        return (
-                            <div key={msg.id} className={`message-row ${isMe ? 'me' : 'other'}`}>
-                                {!isMe && <div className="message-avatar">{senderName[0]}</div>}
-                                <div className="message-bubble">
-                                    {!isMe && <span className="sender-name">{senderName}</span>}
-                                    <p>{msg.content}</p>
-                                    <span className="timestamp">{time}</span>
+                            return (
+                                <div key={msg.id} className={`message-row ${isMe ? 'me' : 'other'}`}>
+                                    {!isMe && <div className="message-avatar">{senderName[0]}</div>}
+                                    <div className="message-bubble">
+                                        {!isMe && <span className="sender-name">{senderName}</span>}
+                                        <p>{msg.content}</p>
+                                        <span className="timestamp">{time}</span>
+                                    </div>
                                 </div>
-                            </div>
-                        );
-                    })}
+                            );
+                        })
+                    )}
                     <div ref={messagesEndRef} />
                 </div>
 

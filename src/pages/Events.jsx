@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../supabaseClient';
+import { db } from '../lib/firebase';
+import { collection, addDoc, doc, updateDoc, onSnapshot, query, orderBy, serverTimestamp } from 'firebase/firestore';
 import { Calendar, MapPin, Users, Bell, Plus } from 'lucide-react';
 import './Events.css';
 
@@ -8,55 +9,50 @@ const Events = () => {
     const { user } = useAuth();
     const [events, setEvents] = useState([]);
 
-    const fetchEvents = async () => {
-        // Fetch events and their participants
-        const { data: eventsData, error } = await supabase
-            .from('events')
-            .select(`
-        *,
-        created_by_profile:created_by (name),
-        event_participants (user_id, status)
-      `)
-            .order('event_date', { ascending: true });
-
-        if (error) console.error('Error fetching events:', error);
-        else setEvents(eventsData);
-    };
-
     useEffect(() => {
-        fetchEvents();
+        const q = query(
+            collection(db, 'events'),
+            orderBy('event_date', 'asc')
+        );
 
-        const eventsChannel = supabase
-            .channel('public:events')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, fetchEvents)
-            .subscribe();
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const eventsData = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data(),
+                event_date: doc.data().event_date?.toDate?.() || new Date(doc.data().event_date) // Handle Firestore TS or ISO string
+            }));
+            setEvents(eventsData);
+        });
 
-        const participantsChannel = supabase
-            .channel('public:event_participants')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'event_participants' }, fetchEvents)
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(eventsChannel);
-            supabase.removeChannel(participantsChannel);
-        };
+        return () => unsubscribe();
     }, []);
 
     const handleJoin = async (eventId, currentStatus) => {
         if (!user) return;
 
+        const event = events.find(e => e.id === eventId);
+        if (!event) return;
+
+        let participants = event.participants || [];
+
         if (currentStatus === 'going') {
             // Leave
-            await supabase
-                .from('event_participants')
-                .delete()
-                .eq('event_id', eventId)
-                .eq('user_id', user.id);
+            participants = participants.filter(p => p.user_id !== (user.id || user.uid));
         } else {
             // Join
-            await supabase
-                .from('event_participants')
-                .upsert({ event_id: eventId, user_id: user.id, status: 'going' });
+            // Remove if exists first (clean slate) then add
+            participants = participants.filter(p => p.user_id !== (user.id || user.uid));
+            participants.push({
+                user_id: user.id || user.uid,
+                status: 'going'
+            });
+        }
+
+        try {
+            const eventRef = doc(db, 'events', eventId);
+            await updateDoc(eventRef, { participants });
+        } catch (error) {
+            console.error('Error updating participants:', error);
         }
     };
 
@@ -64,15 +60,23 @@ const Events = () => {
         if (!user) return;
         const title = prompt('Event Title:');
         const location = prompt('Location:');
-        const dateStr = prompt('Date (YYYY-MM-DD HH:MM):'); // Simple prompt for prototype
+        const dateStr = prompt('Date (YYYY-MM-DD HH:MM):');
 
         if (title && location && dateStr) {
-            await supabase.from('events').insert([{
-                title,
-                location,
-                event_date: new Date(dateStr).toISOString(),
-                created_by: user.id
-            }]);
+            try {
+                await addDoc(collection(db, 'events'), {
+                    title,
+                    location,
+                    event_date: new Date(dateStr).toISOString(),
+                    created_by: user.id || user.uid,
+                    created_by_name: user.username || 'Anonymous',
+                    participants: [],
+                    created_at: serverTimestamp()
+                });
+            } catch (error) {
+                console.error('Error creating event:', error);
+                alert('Could not create event');
+            }
         }
     };
 
@@ -86,48 +90,53 @@ const Events = () => {
             </header>
 
             <div className="events-list">
-                {events.map(event => {
-                    const isGoing = event.event_participants.some(p => p.user_id === user?.id && p.status === 'going');
-                    const attendeesCount = event.event_participants.filter(p => p.status === 'going').length;
+                {events.length === 0 ? (
+                    <p className="no-events">No upcoming events. Plan one?</p>
+                ) : (
+                    events.map(event => {
+                        const myId = user?.id || user?.uid;
+                        const participants = event.participants || [];
+                        const isGoing = participants.some(p => p.user_id === myId && p.status === 'going');
+                        const attendeesCount = participants.filter(p => p.status === 'going').length;
 
-                    return (
-                        <div key={event.id} className="event-card glass-panel">
-                            <div className="event-date">
-                                <Calendar size={24} />
-                                <span>{new Date(event.event_date).toLocaleDateString()}</span>
-                                <span className="event-time">{new Date(event.event_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                            </div>
+                        return (
+                            <div key={event.id} className="event-card glass-panel">
+                                <div className="event-date">
+                                    <Calendar size={24} />
+                                    <span>{new Date(event.event_date).toLocaleDateString()}</span>
+                                    <span className="event-time">{new Date(event.event_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                </div>
 
-                            <div className="event-content">
-                                <h2>{event.title}</h2>
-                                <div className="event-meta">
-                                    <div className="meta-item">
-                                        <MapPin size={16} /> {event.location}
+                                <div className="event-content">
+                                    <h2>{event.title}</h2>
+                                    <div className="event-meta">
+                                        <div className="meta-item">
+                                            <MapPin size={16} /> {event.location}
+                                        </div>
+                                        <div className="meta-item">
+                                            <Users size={16} /> {attendeesCount} Going
+                                        </div>
                                     </div>
-                                    <div className="meta-item">
-                                        <Users size={16} /> {attendeesCount} Going
+                                    <div className="created-by">
+                                        Hosted by {event.created_by_name || 'Unknown'}
                                     </div>
                                 </div>
-                                <div className="created-by">
-                                    Hosted by {event.created_by_profile?.name || 'Unknown'}
+
+                                <div className="event-actions">
+                                    <button
+                                        className={`join-btn ${isGoing ? 'joined' : ''}`}
+                                        onClick={() => handleJoin(event.id, isGoing ? 'going' : null)}
+                                    >
+                                        {isGoing ? 'Going' : 'Join'}
+                                    </button>
+                                    <button className="notify-btn" title="Remind me">
+                                        <Bell size={20} />
+                                    </button>
                                 </div>
                             </div>
-
-                            <div className="event-actions">
-                                <button
-                                    className={`join-btn ${isGoing ? 'joined' : ''}`}
-                                    onClick={() => handleJoin(event.id, isGoing ? 'going' : null)}
-                                >
-                                    {isGoing ? 'Going' : 'Join'}
-                                </button>
-                                <button className="notify-btn" title="Remind me">
-                                    <Bell size={20} />
-                                </button>
-                            </div>
-                        </div>
-                    );
-                })}
-                {events.length === 0 && <p className="no-events">No upcoming events.</p>}
+                        );
+                    })
+                )}
             </div>
         </div>
     );

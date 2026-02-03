@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../supabaseClient';
+import { db } from '../lib/firebase';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { MapPin, Clock, Circle } from 'lucide-react';
 import './Home.css';
 
@@ -22,27 +23,13 @@ const Home = () => {
 
     // Fetch Squad & Subscribe to Changes
     useEffect(() => {
-        const fetchSquad = async () => {
-            const { data, error } = await supabase
-                .from('profiles')
-                .select('*')
-                .order('name');
+        const q = query(collection(db, 'profiles'));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const profiles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setSquad(profiles);
+        });
 
-            if (data) setSquad(data);
-        };
-
-        fetchSquad();
-
-        const channel = supabase
-            .channel('public:profiles')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, (payload) => {
-                fetchSquad();
-            })
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
-        };
+        return () => unsubscribe();
     }, []);
 
     const handleStatusChange = (status) => {
@@ -114,34 +101,40 @@ const Home = () => {
 
             {/* Friends Grid */}
             <section className="squad-grid">
-                {squad.filter(p => p.id !== user?.id).map((friend) => (
-                    <div key={friend.id} className={`friend-card glass-panel status-${friend.status || 'offline'}`}>
-                        <div className="card-header">
-                            <div className="avatar">{friend.name[0]}</div>
-                            <div className="friend-info">
-                                <h3>{friend.name}</h3>
-                                <span className="status-badge">
-                                    <Circle size={8} fill="currentColor" /> {friend.status === 'offline' ? 'Ofaaaa' : friend.status}
-                                </span>
-                            </div>
-                        </div>
-
-                        {friend.status !== 'offline' && (
-                            <div className="card-details">
-                                <div className="detail-row">
-                                    <MapPin size={16} />
-                                    <span>{friend.location || 'Unknown location'}</span>
-                                </div>
-                                {friend.time_note && (
-                                    <div className="detail-row highlight">
-                                        <Clock size={16} />
-                                        <span>Looking to hang @ {friend.time_note}</span>
-                                    </div>
-                                )}
-                            </div>
-                        )}
+                {squad.length === 0 ? (
+                    <div className="empty-state">
+                        <p>Welcome! No one is here yet. Be the first!</p>
                     </div>
-                ))}
+                ) : (
+                    squad.filter(p => p.id !== user?.id).map((friend) => (
+                        <div key={friend.id} className={`friend-card glass-panel status-${friend.status || 'offline'}`}>
+                            <div className="card-header">
+                                <div className="avatar">{friend.username?.[0] || '?'}</div>
+                                <div className="friend-info">
+                                    <h3>{friend.username || 'Unknown'}</h3>
+                                    <span className="status-badge">
+                                        <Circle size={8} fill="currentColor" /> {friend.status === 'offline' ? 'Ofaaaa' : friend.status}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {friend.status !== 'offline' && (
+                                <div className="card-details">
+                                    <div className="detail-row">
+                                        <MapPin size={16} />
+                                        <span>{friend.location || 'Unknown location'}</span>
+                                    </div>
+                                    {friend.time_note && (
+                                        <div className="detail-row highlight">
+                                            <Clock size={16} />
+                                            <span>Looking to hang @ {friend.time_note}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    ))
+                )}
             </section>
         </div>
     );

@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../supabaseClient';
+import { db, storage } from '../lib/firebase';
+import { collection, addDoc, onSnapshot, query, orderBy, serverTimestamp } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Upload, Download, Heart } from 'lucide-react';
 import './Gallery.css';
 
@@ -9,27 +11,22 @@ const Gallery = () => {
     const [photos, setPhotos] = useState([]);
     const [uploading, setUploading] = useState(false);
 
-    const fetchPhotos = async () => {
-        const { data, error } = await supabase
-            .from('gallery_posts')
-            .select('*, profiles(name)')
-            .order('created_at', { ascending: false });
-
-        if (data) setPhotos(data);
-    };
-
     useEffect(() => {
-        fetchPhotos();
+        const q = query(
+            collection(db, 'gallery_posts'),
+            orderBy('created_at', 'desc')
+        );
 
-        // Subscribe to new posts
-        const channel = supabase
-            .channel('public:gallery_posts')
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'gallery_posts' }, fetchPhotos)
-            .subscribe();
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const posts = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data(),
+                created_at: doc.data().created_at?.toDate() || new Date()
+            }));
+            setPhotos(posts);
+        });
 
-        return () => {
-            supabase.removeChannel(channel);
-        };
+        return () => unsubscribe();
     }, []);
 
     const handleUpload = async (event) => {
@@ -38,35 +35,27 @@ const Gallery = () => {
         setUploading(true);
         const file = event.target.files[0];
         const fileExt = file.name.split('.').pop();
-        const fileName = `${Math.random()}.${fileExt}`;
-        const filePath = `${user.id}/${fileName}`;
+        const fileName = `${Math.random().toString(36).substring(7)}.${fileExt}`;
+        const storageRef = ref(storage, `gallery/${user.id}/${fileName}`);
 
         try {
             // 1. Upload to Storage
-            const { error: uploadError } = await supabase.storage
-                .from('gallery')
-                .upload(filePath, file);
-
-            if (uploadError) throw uploadError;
+            const snapshot = await uploadBytes(storageRef, file);
 
             // 2. Get Public URL
-            const { data: { publicUrl } } = supabase.storage
-                .from('gallery')
-                .getPublicUrl(filePath);
+            const publicUrl = await getDownloadURL(snapshot.ref);
 
-            // 3. Insert into Database
-            const { error: dbError } = await supabase
-                .from('gallery_posts')
-                .insert([{
-                    user_id: user.id,
-                    image_url: publicUrl,
-                    caption: '' // Can add caption input later
-                }]);
-
-            if (dbError) throw dbError;
+            // 3. Insert into Firestore
+            await addDoc(collection(db, 'gallery_posts'), {
+                user_id: user.id || user.uid,
+                uploader_name: user.username || 'Anonymous',
+                image_url: publicUrl,
+                caption: '',
+                created_at: serverTimestamp()
+            });
 
         } catch (error) {
-            console.error('Upload failed:', error.message);
+            console.error('Upload failed:', error);
             alert('Upload failed!');
         } finally {
             setUploading(false);
@@ -93,22 +82,26 @@ const Gallery = () => {
             </header>
 
             <div className="photo-grid">
-                {photos.map(photo => (
-                    <div key={photo.id} className="photo-card" style={{ backgroundImage: `url(${photo.image_url})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
-                        <div className="photo-overlay">
-                            <div className="photo-info">
-                                <span className="photo-user">{photo.profiles?.name}</span>
-                                <span className="photo-date">{new Date(photo.created_at).toLocaleDateString()}</span>
-                            </div>
-                            <div className="photo-actions">
-                                <button><Heart size={20} /></button>
-                                <a href={photo.image_url} download target="_blank" rel="noreferrer" className="download-btn">
-                                    <Download size={20} />
-                                </a>
+                {photos.length === 0 ? (
+                    <div className="empty-state"><p>No photos yet. Share something!</p></div>
+                ) : (
+                    photos.map(photo => (
+                        <div key={photo.id} className="photo-card" style={{ backgroundImage: `url(${photo.image_url})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
+                            <div className="photo-overlay">
+                                <div className="photo-info">
+                                    <span className="photo-user">{photo.uploader_name}</span>
+                                    <span className="photo-date">{photo.created_at.toLocaleDateString()}</span>
+                                </div>
+                                <div className="photo-actions">
+                                    <button><Heart size={20} /></button>
+                                    <a href={photo.image_url} download target="_blank" rel="noreferrer" className="download-btn">
+                                        <Download size={20} />
+                                    </a>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                ))}
+                    ))
+                )}
             </div>
         </div>
     );

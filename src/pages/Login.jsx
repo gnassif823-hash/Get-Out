@@ -4,17 +4,13 @@ import { ArrowRight } from 'lucide-react';
 import './Login.css';
 
 const Login = () => {
-    const [name, setName] = useState('');
     const { login } = useAuth();
     const [error, setError] = useState('');
     const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        if (!name.trim()) return;
-
+    const handleLogin = async () => {
         setIsLoggingIn(true);
-        const { success, error } = await login(name.trim());
+        const { success, error } = await login();
         if (!success) {
             setError('Failed to login. Check console.');
             setIsLoggingIn(false);
@@ -29,21 +25,16 @@ const Login = () => {
                     <p>Join the squad.</p>
                 </div>
 
-                <form onSubmit={handleSubmit}>
-                    <div className="input-group">
-                        <input
-                            type="text"
-                            placeholder="Enter your name..."
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            autoFocus
-                        />
-                        <button type="submit" disabled={isLoggingIn}>
-                            <ArrowRight size={24} />
-                        </button>
-                    </div>
+                <div className="login-actions">
+                    <button
+                        className="login-btn"
+                        onClick={handleLogin}
+                        disabled={isLoggingIn}
+                    >
+                        {isLoggingIn ? 'Entering...' : 'Enter as George'} <ArrowRight size={24} />
+                    </button>
                     {error && <p className="error-msg">{error}</p>}
-                </form>
+                </div>
             </div>
         </div>
     );

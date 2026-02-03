@@ -1,0 +1,9 @@
+
+Please create a .env file in the root of your project (c:\Users\User\.gemini\antigravity\scratch\get-out\.env) and add the following keys from your Firebase Console (Project Settings > General > Your apps):
+
+VITE_FIREBASE_API_KEY=
+VITE_FIREBASE_AUTH_DOMAIN=
+VITE_FIREBASE_PROJECT_ID=
+VITE_FIREBASE_STORAGE_BUCKET=
+VITE_FIREBASE_MESSAGING_SENDER_ID=
+VITE_FIREBASE_APP_ID=
