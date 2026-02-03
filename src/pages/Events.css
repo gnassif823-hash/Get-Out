@@ -1,0 +1,133 @@
+.events-page {
+    padding: 2rem;
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.create-event-btn {
+    background: var(--color-primary);
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border-radius: 12px;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.create-event-btn:hover {
+    filter: brightness(1.2);
+    box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
+}
+
+.events-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.event-card {
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+    padding: 1.5rem;
+    transition: transform 0.2s;
+}
+
+.event-card:hover {
+    transform: translateX(4px);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.event-date {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    min-width: 100px;
+    padding-right: 2rem;
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--color-secondary);
+    font-weight: 600;
+    gap: 0.5rem;
+}
+
+.event-content {
+    flex: 1;
+}
+
+.event-content h2 {
+    margin-bottom: 0.5rem;
+    font-size: 1.5rem;
+}
+
+.event-meta {
+    display: flex;
+    gap: 1.5rem;
+    color: var(--color-text-dim);
+    margin-bottom: 1rem;
+}
+
+.meta-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.attendees-preview {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.attendee-pill {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 0.2rem 0.6rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    color: var(--color-text-dim);
+}
+
+.event-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.join-btn {
+    padding: 0.6rem 2rem;
+    border-radius: 8px;
+    border: 1px solid var(--color-secondary);
+    background: transparent;
+    color: var(--color-secondary);
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.join-btn:hover {
+    background: rgba(34, 197, 94, 0.1);
+}
+
+.join-btn.joined {
+    background: var(--color-secondary);
+    color: #0f172a;
+}
+
+.notify-btn {
+    color: var(--color-text-dim);
+    padding: 0.5rem;
+    border-radius: 50%;
+    transition: all 0.2s;
+}
+
+.notify-btn:hover {
+    color: var(--color-text);
+    background: rgba(255, 255, 255, 0.1);
+}

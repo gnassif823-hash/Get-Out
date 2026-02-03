@@ -1,0 +1,79 @@
+.login-page {
+    height: 100vh;
+    width: 100vw;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-bg);
+}
+
+.login-card {
+    width: 100%;
+    max-width: 400px;
+    padding: 3rem;
+    text-align: center;
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    box-shadow: 0 0 40px rgba(59, 130, 246, 0.1);
+}
+
+.login-header h1 {
+    font-size: 3rem;
+    margin-bottom: 0.5rem;
+    background: linear-gradient(to right, var(--color-primary), var(--color-secondary));
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.login-header p {
+    color: var(--color-text-dim);
+    margin-bottom: 3rem;
+    font-size: 1.2rem;
+}
+
+.login-page .input-group {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.login-page input {
+    flex: 1;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 1rem;
+    border-radius: 12px;
+    color: white;
+    font-size: 1.1rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.login-page input:focus {
+    border-color: var(--color-primary);
+}
+
+.login-page button {
+    background: var(--color-primary);
+    color: white;
+    width: 50px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.login-page button:hover:not(:disabled) {
+    background: var(--color-secondary);
+    transform: translateX(2px);
+}
+
+.login-page button:disabled {
+    opacity: 0.5;
+    cursor: wait;
+}
+
+.error-msg {
+    color: #ef4444;
+    margin-top: 1rem;
+}
