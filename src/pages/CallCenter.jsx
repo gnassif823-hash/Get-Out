@@ -1,24 +1,27 @@
 import { Video, Mic, PhoneOff, Monitor } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 import './CallCenter.css';
 
 const CallCenter = () => {
+    const { user } = useAuth();
+
+    // In a real app, we'd fetch active calls from Supabase 'calls' table
+    // For now, we simply show the user their own view and a Join button
+    // No fake GEORGE or SARAH.
+
     return (
         <div className="page-container call-page">
             <div className="call-stage">
                 <div className="video-grid">
-                    {/* Mock Participants */}
-                    <div className="video-card">
-                        <div className="avatar-placeholder">G</div>
-                        <span className="participant-name">George</span>
-                        <div className="mic-status"><Mic size={14} /></div>
-                    </div>
-                    <div className="video-card">
-                        <div className="avatar-placeholder">S</div>
-                        <span className="participant-name">Sarah</span>
-                    </div>
+                    {/* Self View */}
                     <div className="video-card self">
-                        <div className="avatar-placeholder">Me</div>
-                        <span className="participant-name">Me</span>
+                        <div className="avatar-placeholder">{user?.name?.[0]}</div>
+                        <span className="participant-name">{user?.name} (You)</span>
+                    </div>
+
+                    {/* Empty State / Waiting */}
+                    <div className="video-card empty">
+                        <p>Waiting for others to join...</p>
                     </div>
                 </div>
 

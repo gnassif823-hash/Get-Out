@@ -1,3 +1,12 @@
+-- RESET (Careful! This deletes all data for a clean slate)
+DROP TABLE IF EXISTS public.reels CASCADE;
+DROP TABLE IF EXISTS public.gallery_posts CASCADE;
+DROP TABLE IF EXISTS public.calls CASCADE;
+DROP TABLE IF EXISTS public.event_participants CASCADE;
+DROP TABLE IF EXISTS public.events CASCADE;
+DROP TABLE IF EXISTS public.messages CASCADE;
+DROP TABLE IF EXISTS public.profiles CASCADE;
+
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
@@ -9,6 +18,7 @@ CREATE TABLE public.profiles (
     location TEXT,
     time_note TEXT, -- 'Looking to hang out at...'
     avatar_color TEXT,
+    avatar_url TEXT, -- NEW: For profile pictures
     last_updated TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -16,7 +26,8 @@ CREATE TABLE public.profiles (
 CREATE TABLE public.messages (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     user_id UUID REFERENCES public.profiles(id) NOT NULL,
-    content TEXT NOT NULL,
+    content TEXT,
+    attachment_url TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -40,7 +51,7 @@ CREATE TABLE public.event_participants (
     UNIQUE(event_id, user_id)
 );
 
--- CALLS: For active Jitsi rooms (optional, mainly for signaling)
+-- CALLS: For active Jitsi rooms
 CREATE TABLE public.calls (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
     room_name TEXT NOT NULL,
@@ -66,12 +77,8 @@ CREATE TABLE public.reels (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Storage Buckets (Schema logic only, actual creation needs to be done in Supabase Dashboard)
--- Insert rows into storage.buckets if using SQL to init (requires permissions); 
--- usually done via UI. I will stick to Table definitions here.
-
 -- Realtime
--- Supabase requires enabling replication on tables.
+-- Re-add tables to publication (idempotent usually, but dropping tables removes them)
 ALTER PUBLICATION supabase_realtime ADD TABLE profiles;
 ALTER PUBLICATION supabase_realtime ADD TABLE messages;
 ALTER PUBLICATION supabase_realtime ADD TABLE events;
@@ -95,3 +102,40 @@ CREATE POLICY "Public gallery access" ON public.gallery_posts FOR ALL USING (tru
 
 ALTER TABLE public.reels ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public reels access" ON public.reels FOR ALL USING (true) WITH CHECK (true);
+
+-- STORAGE BUCKETS
+-- Creating 4 buckets: gallery, reels, avatars, chat_attachments
+INSERT INTO storage.buckets (id, name, public)
+VALUES 
+  ('gallery', 'gallery', true),
+  ('reels', 'reels', true),
+  ('avatars', 'avatars', true),
+  ('chat_attachments', 'chat_attachments', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- STORAGE POLICIES
+-- Drop existing policies first to avoid "policy already exists"
+DROP POLICY IF EXISTS "Public Access Gallery" ON storage.objects;
+DROP POLICY IF EXISTS "Public Upload Gallery" ON storage.objects;
+DROP POLICY IF EXISTS "Public Access Reels" ON storage.objects;
+DROP POLICY IF EXISTS "Public Upload Reels" ON storage.objects;
+DROP POLICY IF EXISTS "Public Access Avatars" ON storage.objects;
+DROP POLICY IF EXISTS "Public Upload Avatars" ON storage.objects;
+DROP POLICY IF EXISTS "Public Access Chat" ON storage.objects;
+DROP POLICY IF EXISTS "Public Upload Chat" ON storage.objects;
+
+-- Gallery
+CREATE POLICY "Public Access Gallery" ON storage.objects FOR SELECT USING ( bucket_id = 'gallery' );
+CREATE POLICY "Public Upload Gallery" ON storage.objects FOR INSERT WITH CHECK ( bucket_id = 'gallery' );
+
+-- Reels
+CREATE POLICY "Public Access Reels" ON storage.objects FOR SELECT USING ( bucket_id = 'reels' );
+CREATE POLICY "Public Upload Reels" ON storage.objects FOR INSERT WITH CHECK ( bucket_id = 'reels' );
+
+-- Avatars
+CREATE POLICY "Public Access Avatars" ON storage.objects FOR SELECT USING ( bucket_id = 'avatars' );
+CREATE POLICY "Public Upload Avatars" ON storage.objects FOR INSERT WITH CHECK ( bucket_id = 'avatars' );
+
+-- Chat Attachments
+CREATE POLICY "Public Access Chat" ON storage.objects FOR SELECT USING ( bucket_id = 'chat_attachments' );
+CREATE POLICY "Public Upload Chat" ON storage.objects FOR INSERT WITH CHECK ( bucket_id = 'chat_attachments' );
